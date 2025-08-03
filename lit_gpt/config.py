@@ -473,7 +473,7 @@ Diff_LLaMA = [
     ),
     dict(
         name="Diff_LLaMA_761M",
-        block_size=2048,
+        block_size=4096,
         vocab_size=32000,
         padding_multiple=64,
         n_layer=24,

@@ -1,3 +1,4 @@
+
 import os
 import logging
 from dataclasses import dataclass
@@ -7,7 +8,7 @@ import pickle
 import random
 import torch
 from torch.utils.data import Dataset, DataLoader
-import pytorch_lightning as pl
+import lightning as L
 from torch.nn.utils.rnn import pad_sequence
 from tokenizer import (
     MusicTokenizerWithStyle,
@@ -29,6 +30,7 @@ class DataCfg:
     skip_long_after_tokenization: bool = True
     augment: bool = True
     block_size: int = 2048
+    overfit_single_batch: bool = False
 
 _SNIPPET_LEN = 256
 
@@ -178,7 +180,7 @@ def midi_collate_fn(batch: List[Optional[Dict[str, Any]]], tokenizer: MusicToken
         return None
     return result
 
-class MusicDataModule(pl.LightningDataModule):
+class MusicDataModule(L.LightningDataModule):
     def __init__(self, cfg: DataCfg, tokenizer: MusicTokenizerWithStyle, batch_size: int = 8, num_workers: int = 0):
         super().__init__()
         self.cfg = cfg
@@ -210,15 +212,20 @@ class MusicDataModule(pl.LightningDataModule):
             if self.cfg.shuffle_records:
                 random.shuffle(self.train_dataset._records)
             
-            # Load validation dataset if specified
-            if self.cfg.val_pkl:
-                logger.info(f"Attempting to load validation dataset from: {self.cfg.val_pkl}")
-                if not os.path.exists(self.cfg.val_pkl):
-                    logger.error(f"Validation PKL file does not exist: {self.cfg.val_pkl}")
-                else:
-                    self.val_dataset = LazyMidiDataset(self.cfg, self.tokenizer, self.cfg.val_pkl, is_validation_set=True)
-                    if self.val_dataset:
-                        logger.info(f"Validation dataset created with {len(self.val_dataset)} samples")
+            if self.cfg.overfit_single_batch:
+                self.train_dataset._records = self.train_dataset._records[:self.batch_size]
+                self.val_dataset = self.train_dataset  # Use same for validation
+                logger.info(f"Overfitting on single batch: limited to {self.batch_size} samples")
+            else:
+                # Load validation dataset if specified
+                if self.cfg.val_pkl:
+                    logger.info(f"Attempting to load validation dataset from: {self.cfg.val_pkl}")
+                    if not os.path.exists(self.cfg.val_pkl):
+                        logger.error(f"Validation PKL file does not exist: {self.cfg.val_pkl}")
+                    else:
+                        self.val_dataset = LazyMidiDataset(self.cfg, self.tokenizer, self.cfg.val_pkl, is_validation_set=True)
+                        if self.val_dataset:
+                            logger.info(f"Validation dataset created with {len(self.val_dataset)} samples")
 
     def train_dataloader(self):
         if not self.train_dataset:
@@ -228,7 +235,7 @@ class MusicDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             collate_fn=lambda batch: midi_collate_fn(batch, self.tokenizer),
-            shuffle=True,
+            shuffle=not self.cfg.overfit_single_batch,  # No shuffle for overfit
             pin_memory=True
         )
 
@@ -248,8 +255,8 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] %(levelname)s %(name)s %(process)d: %(message)s')
     import argparse
     parser = argparse.ArgumentParser(description="Test MusicDataModule")
-    parser.add_argument("--train_pkl", type=str, required=True, help="Path to training PKL file")
-    parser.add_argument("--val_pkl", type=str, default=None, help="Path to validation PKL file")
+    parser.add_argument("--train_pkl", type=str, default="cache/dataset_paths_synthetic_structured-aria-unique_limitNone_37776ff2_train.pkl", help="Path to training PKL file")
+    parser.add_argument("--val_pkl", type=str, default="cache/dataset_paths_synthetic_structured-aria-unique_limitNone_37776ff2_val.pkl", help="Path to validation PKL file")
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--max_len", type=int, default=4096)

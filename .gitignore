@@ -2,3 +2,4 @@
 datasets/
 cache/
 __pycache__/
+workdir/

@@ -51,9 +51,8 @@ class TransEncoder(nn.Module):
             if (name == "proj.weight" and isinstance(module, LLaMAMLP)) or (name == "w3.weight" and isinstance(module, SwiGLU) or (name=="proj.weight" and isinstance(module, SelfAttention))):  #if use xformer swiglu, fc2 layer will be renamed to w3
                 nn.init.normal_(p, mean=0.0, std=1 / math.sqrt(self.config.n_embd)  /  n_layer)
 
-
     def forward(
-        self, idx: torch.Tensor
+        self, idx: torch.Tensor, attention_mask=None
     ) -> torch.Tensor:
         B, T = idx.size()
 
