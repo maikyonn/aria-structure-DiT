@@ -5,7 +5,7 @@ import itertools
 import random
 
 from pathlib import Path
-from typing import Final, Callable, Any
+from typing import Final, Callable, Any, Union
 
 from ariautils.midi import (
     MidiDict,
@@ -59,7 +59,7 @@ class RelTokenizer(Tokenizer):
             adjusted in config.json at 'tokenizer.rel'.
     """
 
-    def __init__(self, config_path: Path | str | None = None) -> None:
+    def __init__(self, config_path: Union[Path, str, None] = None) -> None:
         super().__init__()
         self.config = load_config(config_path)["tokenizer"]["rel"]
         self.name = "rel"
@@ -653,7 +653,7 @@ class RelTokenizer(Tokenizer):
             _max_tempo_aug: float,
             tempo_aug: float | None = None,
         ) -> list[Token]:
-            def _quantize_time_no_truncate(_n: int | float) -> int:
+            def _quantize_time_no_truncate(_n: Union[int, float]) -> int:
                 return round(_n / time_step_ms) * time_step_ms
 
             def _append_wait_tokens(
@@ -670,7 +670,7 @@ class RelTokenizer(Tokenizer):
                 if _wait_time_ms != 0:
                     _res.append(("wait", _wait_time_ms))
 
-                return res
+                return _res
 
             if tempo_aug is None:
                 tempo_aug = random.uniform(

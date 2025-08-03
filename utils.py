@@ -2,7 +2,7 @@ import math
 import re
 from itertools import groupby
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple, Optional
+from typing import Iterable, List, Sequence, Tuple, Optional, Union
 import logging
 import random
 from tokenizer import (
@@ -68,7 +68,7 @@ def extract_style_change_timestamps(
     style_labels: Sequence[str],
     tokenizer: MusicTokenizerWithStyle,
     min_prop: float = 0.05
-) -> List[Tuple[str, str | None]]:
+) -> List[Tuple[str, Union[str, None]]]:
     if len(style_labels) <= 1:
         return []
     N = len(style_labels)

@@ -6,14 +6,15 @@ from typing import (
     Any,
     Final,
     Callable,
-    TypeAlias,
+    Union,
 )
+from typing_extensions import TypeAlias
 
 from ariautils.midi import MidiDict
 
 
 SpecialToken: TypeAlias = str
-Token: TypeAlias = tuple[Any, ...] | str
+Token: TypeAlias = Union[tuple[Any, ...], str]
 
 
 class Tokenizer:
@@ -161,7 +162,7 @@ class Tokenizer:
 
         return closest  # type: ignore[return-value]
 
-    def add_tokens_to_vocab(self, tokens: list[Token] | tuple[Token]) -> None:
+    def add_tokens_to_vocab(self, tokens: Union[list[Token], tuple[Token]]) -> None:
         """Utility function for safely adding extra tokens to vocab."""
 
         for token in tokens:

@@ -17,11 +17,12 @@ from typing import (
     Final,
     Deque,
     Callable,
-    TypeAlias,
     Literal,
     TypedDict,
     cast,
+    Union,
 )
+from typing_extensions import TypeAlias
 
 from ariautils.utils import (
     load_maestro_metadata_json,
@@ -86,9 +87,9 @@ class NoteMessage(TypedDict):
     channel: int
 
 
-MidiMessage: TypeAlias = (
-    MetaMessage | TempoMessage | PedalMessage | InstrumentMessage | NoteMessage
-)
+MidiMessage: TypeAlias = Union[
+    MetaMessage, TempoMessage, PedalMessage, InstrumentMessage, NoteMessage
+]
 
 
 class MidiDictData(TypedDict):
@@ -217,7 +218,7 @@ class MidiDict:
         return cls(**msg_dict)
 
     @classmethod
-    def from_midi(cls, mid_path: str | Path) -> "MidiDict":
+    def from_midi(cls, mid_path: Union[str, Path]) -> "MidiDict":
         """Loads a MIDI file from path and returns MidiDict."""
 
         mid = mido.MidiFile(mid_path)
@@ -1942,7 +1943,7 @@ def normalize_midi_dict(
         quantize_velocity_fn: Callable[[int], int],
     ) -> list[NoteMessage]:
 
-        def _quantize_time(_n: int) -> int:
+        def _quantize_time(_n: Union[int, float]) -> int:
             return round(_n / time_step_ms) * time_step_ms
 
         note_msgs: list[NoteMessage] = []

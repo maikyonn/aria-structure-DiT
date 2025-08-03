@@ -6,12 +6,12 @@ import logging
 from importlib import resources
 from pathlib import Path
 from functools import lru_cache
-from typing import Any, cast
+from typing import Any, cast, Union
 
 from .config import load_config
 
 
-def get_logger(name: str | None) -> logging.Logger:
+def get_logger(name: Union[str, None]) -> logging.Logger:
     logger = logging.getLogger(name)
     if not logger.handlers:
         logger.propagate = False
@@ -52,7 +52,7 @@ def load_maestro_metadata_json() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def load_aria_midi_metadata_json(
-    metadata_load_path: Path | str | None = None,
+    metadata_load_path: Union[Path, str, None] = None,
 ) -> dict[int, dict[str, Any]]:
     """Loads MAESTRO metadata json."""
     if metadata_load_path is None:

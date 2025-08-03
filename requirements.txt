@@ -1,0 +1,40 @@
+# Core ML/DL Framework
+torch>=2.0.0
+pytorch-lightning>=2.0.0
+lightning>=2.0.0
+
+# Attention and Optimization
+
+xformers>=0.0.20
+
+# Audio/MIDI Processing
+mido>=1.2.10
+
+# Data Processing
+tqdm
+numpy
+pandas
+
+# Logging and Monitoring
+wandb
+lightning-utilities
+
+# Development and Utilities
+einops
+pathlib
+
+# Optional: for better performance
+triton  # for flash-attention
+
+# Standard library dependencies (usually included with Python)
+# pickle, os, sys, math, logging, argparse, pathlib, typing, etc.
+# are part of Python standard library
+
+# Project-specific (assuming these are custom modules)
+# ariautils - this appears to be a custom module in your project
+# lit_gpt - this might need to be installed separately or is part of your project
+
+# Additional common ML dependencies that might be needed
+scipy
+matplotlib
+seaborn

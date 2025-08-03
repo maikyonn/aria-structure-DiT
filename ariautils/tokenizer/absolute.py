@@ -6,7 +6,7 @@ import random
 
 from pathlib import Path
 from collections import defaultdict
-from typing import Final, Callable, Any
+from typing import Final, Callable, Any, Union
 
 from ariautils.midi import (
     MidiDict,
@@ -65,7 +65,7 @@ class AbsTokenizer(Tokenizer):
             adjusted in config.json at 'tokenizer.abs'.
     """
 
-    def __init__(self, config_path: Path | str | None = None) -> None:
+    def __init__(self, config_path: Union[Path, str, None] = None) -> None:
         super().__init__()
         self.config = load_config(config_path)["tokenizer"]["abs"]
         self.name = "abs"
@@ -711,7 +711,7 @@ class AbsTokenizer(Tokenizer):
             src: list[Token],
             unk_tok: str,
             _max_pitch_aug: int,
-            pitch_aug: int | None = None,
+            pitch_aug: Union[int, None] = None,
         ) -> list[Token]:
             def pitch_aug_tok(tok: Token, _pitch_aug: int) -> Token:
                 if isinstance(tok, str):  # Stand in for SpecialToken
@@ -782,7 +782,7 @@ class AbsTokenizer(Tokenizer):
             min_velocity_step: int,
             max_velocity: int,
             _max_num_aug_steps: int,
-            aug_step: int | None = None,
+            aug_step: Union[int, None] = None,
         ) -> list[Token]:
             def velocity_aug_tok(tok: Token, _velocity_aug: int) -> Token:
                 if isinstance(tok, str):  # Stand in for SpecialToken
@@ -868,12 +868,12 @@ class AbsTokenizer(Tokenizer):
             instruments_wd: list[str],
             _max_tempo_aug: float,
             _mixup: bool,
-            tempo_aug: float | None = None,
+            tempo_aug: Union[float, None] = None,
         ) -> list[Token]:
             """This must be used with export_aug_fn_concat in order to work
             properly for concatenated sequences."""
 
-            def _quantize_time(_n: int | float) -> int:
+            def _quantize_time(_n: Union[int, float]) -> int:
                 return round(_n / time_step) * time_step
 
             if tempo_aug is None:
@@ -890,7 +890,7 @@ class AbsTokenizer(Tokenizer):
 
             res_prefix: list[Token] = []
             src_time_tok_cnt = 0
-            dim_tok_seen_at: tuple[int, int] | None = None
+            dim_tok_seen_at: Union[tuple[int, int], None] = None
             eos_tok_seen: bool = False
 
             idx = 0

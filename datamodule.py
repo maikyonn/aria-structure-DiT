@@ -142,7 +142,7 @@ class LazyMidiDataset(Dataset):
         enc_prompt_tokens.append(PROMPT_END_TOKEN)
 
         enc_ids = self.tok.encode_tokens(enc_prompt_tokens)
-        dec_ids = self.tok.encode_tokens(self.tok.remove_instrument_prefix(original_tokens))
+        dec_ids = self.tok.encode_tokens(original_tokens)
         
         if len(enc_ids) > self.cfg.max_len or len(dec_ids) > self.cfg.max_len:
             if self.cfg.skip_long_after_tokenization:
@@ -267,7 +267,6 @@ if __name__ == "__main__":
     )
     dm = MusicDataModule(cfg=data_cfg, tokenizer=tok, batch_size=args.batch_size, num_workers=args.num_workers)
     dm.setup(stage='fit')
-
     for split in ['train', 'val']:
         logger.info(f"\n--- Checking {split} dataloader ---")
         loader = getattr(dm, f"{split}_dataloader")()
@@ -280,6 +279,15 @@ if __name__ == "__main__":
                 logger.info(f"{split.capitalize()} Batch {i+1} keys: {batch.keys()}")
                 for k, v in batch.items():
                     logger.info(f" {k}: shape={v.shape}, dtype={v.dtype}")
+                
+                # Print detokenized prompt_ids and input_ids for first batch
+                if i == 0:
+                    if 'prompt_ids' in batch and 'input_ids' in batch:
+                        prompt_tokens = tok.decode_tokens(batch['prompt_ids'][0].tolist())
+                        input_tokens = tok.decode_tokens(batch['input_ids'][0].tolist())
+                        logger.info(f"\n{split.capitalize()} Sample 0 - Detokenized Prompt: {prompt_tokens[:5000]}...")
+                        logger.info(f"{split.capitalize()} Sample 0 - Detokenized Input: {input_tokens[:5000]}...")
+                
                 if i >= 1:
                     break
         else:
