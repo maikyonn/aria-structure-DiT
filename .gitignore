@@ -3,3 +3,6 @@ datasets/
 cache/
 __pycache__/
 workdir/
+SageAttention/
+aria-midi-v1-deduped-ext/
+syn-data/

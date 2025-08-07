@@ -10,13 +10,16 @@ import torch
 import torch.nn as nn
 from lightning_utilities.core.imports import RequirementCache
 from typing_extensions import Self
-from flash_attn import flash_attn_func
+from sageattention import sageattn
 from lit_gpt.config import Config
 from xformers.ops import SwiGLU
 from .fused_rotary_embedding import apply_rotary_emb_func
+
+# Set attention function to sage attention
+attn_func = sageattn
+
 RoPECache = Tuple[torch.Tensor, torch.Tensor]
 KVCache = Tuple[torch.Tensor, torch.Tensor]
-FlashAttention2Available = RequirementCache("flash-attn>=2.0.0.post1")
 
 
 class TransEncoder(nn.Module):
@@ -169,6 +172,9 @@ class SelfAttention(nn.Module):
 
         # apply rope in fp32 significanly stabalize training
         # fused rope expect (batch_size, seqlen, nheads, headdim)
+        # Ensure cos/sin have same dtype as q/k to avoid dtype mismatch
+        cos = cos.to(dtype=q.dtype)
+        sin = sin.to(dtype=q.dtype)
         q = apply_rotary_emb_func(q, cos, sin, False, True)
         k = apply_rotary_emb_func(k, cos, sin, False, True)
 
@@ -195,13 +201,25 @@ class SelfAttention(nn.Module):
         scale = 1.0 / math.sqrt(self.config.head_size)
 
         if (
-            FlashAttention2Available
-            and q.device.type == "cuda"
+            q.device.type == "cuda"
             and q.dtype in (torch.float16, torch.bfloat16)
         ):
-            from flash_attn import flash_attn_func
-
-            return flash_attn_func(q, k, v, dropout_p=0.0, softmax_scale=scale, causal=False)
+            # For sage attention, we need to transpose to get (batch_size, head_num, seq_len, head_dim)
+            q = q.transpose(1, 2)  # (B, nh_q, T, hs)
+            k = k.transpose(1, 2)  # (B, nh_k, T, hs)
+            v = v.transpose(1, 2)  # (B, nh_v, T, hs)
+            
+            # Handle GQA by repeating k and v if needed
+            if q.size(1) != k.size(1):
+                k = k.repeat_interleave(q.shape[1]//k.shape[1], dim=1)
+                v = v.repeat_interleave(q.shape[1]//v.shape[1], dim=1)
+            
+            # Clone k to avoid in-place modification issues in sage attention
+            k = k.clone()
+            y = attn_func(q, k, v, tensor_layout="HND", is_causal=False)
+            return y.transpose(1, 2)  # (B, T, nh_q, hs)
+        
+        # Fallback to standard attention
         q = q.transpose(1, 2)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
