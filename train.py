@@ -668,7 +668,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-2, help='Weight decay')
     # Scheduler & training system
-    parser.add_argument('--warmup_iters', type=int, default=1000, help='Warmup steps for LR scheduler')
+    parser.add_argument('--warmup_iters', type=int, default=400, help='Warmup steps for LR scheduler')
     parser.add_argument('--decay_lr', action='store_true', help='Enable cosine LR decay with warmup')
     parser.add_argument('--min_lr', type=float, default=1e-5, help='Minimum LR for cosine schedule')
     parser.add_argument('--accumulate_grad_batches', type=int, default=1, help='Gradient accumulation steps')

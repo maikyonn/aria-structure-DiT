@@ -1,12 +1,3 @@
-
-datasets/
-cache/
-__pycache__/
-workdir/
-SageAttention/
-aria-midi-v1-deduped-ext/
-syn-data/
-
 wget -O aria-midi-v1-pruned-ext.tar.gz "https://huggingface.co/datasets/loubb/aria-midi/resolve/main/aria-midi-v1-pruned-ext.tar.gz?download=true"
 tar -I pigz -xf aria-midi-v1-pruned-ext.tar.gz
 
@@ -48,7 +39,7 @@ python train.py \
   --objective pure \
   --model 336 \
   --max_epochs 20 \
-  --devices 4 --batch_size 16 --num_workers 32 \
+  --devices 4 --batch_size 16 --num_workers 8 \
   --accumulate_grad_batches 8 \
   --lr 3e-4 --weight_decay 1e-2 \
   --decay_lr --warmup_iters 2000 --min_lr 1e-5 \
