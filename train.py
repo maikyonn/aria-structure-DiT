@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union
 import json
 from dataclasses import asdict
+import hashlib
 
 import torch.nn.functional as F
 import lightning as L
@@ -25,7 +26,8 @@ class DiffusionLightningModule(L.LightningModule):
     def __init__(self, config: Config, learning_rate: float, weight_decay: float, beta1: float, beta2: float,
                  warmup_iters: int, min_lr: float, decay_lr: bool, grad_clip: float,
                  tokenizer: MusicTokenizerWithStyle, eval_iters: int = 100, mc_samples: int = 128,
-                 mask_prob_min: float = 0.05, mask_prob_max: float = 0.30, mask_schedule: str = 'linear'):
+                 mask_prob_min: float = 0.05, mask_prob_max: float = 0.30, mask_schedule: str = 'linear',
+                 deterministic_mask: bool = False):
         super().__init__()
         self.save_hyperparameters(ignore=['tokenizer'])
         self.config = config
@@ -38,6 +40,7 @@ class DiffusionLightningModule(L.LightningModule):
         self.mask_prob_min = mask_prob_min
         self.mask_prob_max = mask_prob_max
         self.mask_schedule = mask_schedule
+        self.deterministic_mask = deterministic_mask
 
     def _current_mask_prob(self) -> float:
         # Linear ramp from min->max across epochs; constant uses max as target
@@ -116,7 +119,6 @@ class DiffusionLightningModule(L.LightningModule):
         self.log('val/loss', val_loss, prog_bar=True)
         self.log('val/ppl', math.exp(val_loss), prog_bar=True)
         return val_loss
-
     def configure_optimizers(self):
         # Exclude biases and norm weights from weight decay
         decay_params = []
@@ -136,22 +138,13 @@ class DiffusionLightningModule(L.LightningModule):
             {"params": no_decay_params, "weight_decay": 0.0},
         ]
 
-        # Try to use fused AdamW when available (CUDA), otherwise fall back
-        try:
-            optimizer = AdamW(
-                param_groups,
-                lr=self.hparams.learning_rate,
-                betas=(self.hparams.beta1, self.hparams.beta2),
-                foreach=False,
-                fused=True,
-            )
-        except TypeError:
-            optimizer = AdamW(
-                param_groups,
-                lr=self.hparams.learning_rate,
-                betas=(self.hparams.beta1, self.hparams.beta2),
-                foreach=False,
-            )
+        # Use regular AdamW without fused operations
+        optimizer = AdamW(
+            param_groups,
+            lr=self.hparams.learning_rate,
+            betas=(self.hparams.beta1, self.hparams.beta2),
+            foreach=False,
+        )
 
         if not self.hparams.decay_lr:
             return optimizer
@@ -188,7 +181,7 @@ class DiffusionLightningModule(L.LightningModule):
         b, l = batch.shape
         mask_indices = torch.zeros((b, l), dtype=torch.bool, device=batch.device)
 
-        # Sample per-sample masking probability from [min, current_or_max], then mask contiguous spans
+        # Sample per-sample masking probability from [min, current_or_max], then mask independent random tokens
         lower = float(self.mask_prob_min)
         upper = float(self._current_mask_prob())
         lower = max(0.0, min(1.0, lower))
@@ -201,57 +194,23 @@ class DiffusionLightningModule(L.LightningModule):
             if resp_end <= resp_start:
                 continue
             resp_len = resp_end - resp_start
-            target_tokens = max(1, int(resp_len * float(p_mask[i].item())))
 
-            # Choose number of spans (1 to 3) and distribute target_tokens across them
-            num_spans = random.randint(1, min(3, target_tokens))
-            base = target_tokens // num_spans
-            remainder = target_tokens % num_spans
-            span_lengths = [base + (1 if s < remainder else 0) for s in range(num_spans)]
-            span_lengths = [max(1, min(resp_len, sl)) for sl in span_lengths]
-
-            occupied: List[Tuple[int, int]] = []  # (start, end) in response-local coords
-
-            def is_free(start_local: int, length_local: int) -> bool:
-                end_local = start_local + length_local
-                for s, e in occupied:
-                    if not (end_local <= s or start_local >= e):
-                        return False
-                return True
-
-            for span_len in span_lengths:
-                if span_len > resp_len:
-                    span_len = resp_len
-                max_start = max(0, resp_len - span_len)
-                placed = False
-                # Try a few random placements to avoid overlaps
-                for _ in range(20):
-                    start_local = random.randint(0, max_start) if max_start > 0 else 0
-                    if is_free(start_local, span_len):
-                        occupied.append((start_local, start_local + span_len))
-                        placed = True
-                        break
-                if not placed:
-                    # Greedy fallback: scan for first free slot
-                    for start_local in range(max_start + 1):
-                        if is_free(start_local, span_len):
-                            occupied.append((start_local, start_local + span_len))
-                            placed = True
-                            break
-                if not placed:
-                    # If we still can't place, skip this span
-                    continue
-
-            # Apply spans
-            for s_local, e_local in occupied:
-                s_idx = resp_start + s_local
-                e_idx = resp_start + e_local
-                mask_indices[i, s_idx:e_idx] = True
+            if self.deterministic_mask:
+                # Deterministic Bernoulli per token with probability p_mask[i]
+                sample_ids = batch[i, :resp_end].detach().to('cpu').numpy().tobytes()
+                seed = int.from_bytes(hashlib.sha256(sample_ids).digest()[:8], 'little') & 0x7FFFFFFF
+                gen = torch.Generator(device=batch.device)
+                gen.manual_seed(seed)
+                coin = torch.rand((resp_len,), generator=gen, device=batch.device)
+                mask_slice = coin < p_mask[i]
+            else:
+                mask_slice = torch.rand((resp_len,), device=batch.device) < p_mask[i]
 
             # Ensure at least one token masked
-            if not mask_indices[i, resp_start:resp_end].any():
-                mid = resp_start + (resp_len // 2)
-                mask_indices[i, mid] = True
+            if not mask_slice.any():
+                mask_slice[resp_len // 2] = True
+
+            mask_indices[i, resp_start:resp_end] = mask_slice
         # Use tokenizer's mask token id consistently across train/val/gen
         noisy_value = torch.tensor(self.tokenizer.mask_id, device=batch.device, dtype=batch.dtype)
         noisy_batch = torch.where(mask_indices, noisy_value, batch)
@@ -604,6 +563,7 @@ def main():
         mask_prob_min=args.mask_prob_min,
         mask_prob_max=args.mask_prob_max,
         mask_schedule=args.mask_schedule,
+        deterministic_mask=args.deterministic_mask,
     )
     
     out_dir = Path('workdir') / f'mdm-{args.model}M-{args.max_epochs}'
@@ -633,6 +593,7 @@ def main():
         logger=[csv_logger, wandb_logger],
         callbacks=callbacks,
         log_every_n_steps=10,
+        limit_val_batches=4,
     )
     
     print(f"Total parameters: {num_parameters(model.model):,}")
@@ -701,9 +662,10 @@ def parse_args():
     parser.add_argument('--mask_prob_min', type=float, default=0.05, help='Minimum mask prob (lower bound)')
     parser.add_argument('--mask_prob_max', type=float, default=0.30, help='Maximum mask prob (upper bound)')
     parser.add_argument('--mask_schedule', type=str, default='linear', choices=['linear', 'constant'], help='How masking probability evolves with epoch (linear or constant)')
+    parser.add_argument('--deterministic_mask', action='store_true', help='Use deterministic span masking per sample for sanity checks')
     parser.add_argument('--print_sample_batch', action='store_true', help='Print sample batch info for debugging')
     parser.add_argument('--overfit_single_batch', action='store_true', help='Overfit on single batch')
-    parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
+    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-2, help='Weight decay')
     # Scheduler & training system
     parser.add_argument('--warmup_iters', type=int, default=1000, help='Warmup steps for LR scheduler')
