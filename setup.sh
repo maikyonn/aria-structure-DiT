@@ -33,6 +33,17 @@ pip install pytorch-lightning
 pip install tqdm
 pip install einops
 
+# run preprocess.py on the aria dataset (the data directory specifically to allow for multi worker scanning) to get the pkl files for training 
+python preprocess.py --data_dir aria-midi-v1-pruned-ext/data --mode real --split_train_val
+
+# may have to change the pkl files depending on the pkl file naming.
+# There are 2 objective modes, prompt is for prompt training and pure is just unsupervised training.
+# From testing, i've learned the mask probability for tokens is crucial to having the model learn. 
+# If the mask probability is too high, the diffusion task becomes too difficult and the model's loss will barely drop. 
+# I've implemented a gradual increase in the mask probability after each epoch. 
+# Though currently, I do think we need to drastically improve the amount of epochs currently training on.
+# Or increase the model parameter count
+
 python train.py \
   --train_pkl cache/dataset_paths_real_data_limitNone_c79653f4_train.pkl \
   --val_pkl cache/dataset_paths_real_data_limitNone_c79653f4_val.pkl \
